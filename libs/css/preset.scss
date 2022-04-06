@@ -1,0 +1,63 @@
+// Fixed: The position of the element will be positioned relative to the viewport.
+// Static: The elements will be positioned according to the normal flow of the page.
+// Relative: The element remains in the normal flow of the document but left, right, top, and bottom affects.
+// Absolute: The position of the element will be relative to the closest positioned ancestor.
+// Sticky: The element with position: sticky and top: 0 played a role between fixed & relative based on the position where it is placed
+
+// 通过scss的mixin功能，把原来需要写4行的css，变成一行
+// 目的是保持代码干净整洁，不至于在nvue下，到处都要写display:flex的条件编译
+@mixin flex($direction: row) {
+	/* #ifndef APP-NVUE */
+	display: flex;
+	/* #endif */
+	flex-direction: $direction;
+}
+
+// 超出行数，自动显示行尾省略号，最多5行
+// 来自uView的温馨提示：当您在控制台看到此报错，说明需要在App.vue的style标签加上【lang="scss"】
+@for $i from 1 through 5 {
+	.line-limit-#{$i} {
+		flex: 1;
+		text-overflow: ellipsis;
+		overflow: hidden;		
+		/* #ifdef APP-NVUE */
+		// nvue下，可以直接使用lines属性，这是weex特有样式
+		lines: $i;
+		/* #endif */
+
+		/* #ifndef APP-NVUE */
+		// vue下，单行和多行显示省略号需要单独处理
+		@if $i == '1' {
+			white-space: nowrap;
+		} @else {
+			display: -webkit-box!important;
+			word-break: break-all;
+			-webkit-line-clamp: $i;
+			-webkit-box-orient: vertical!important;
+		}
+		/* #endif */
+	}
+}
+
+// generate properties’ prefix: moz webkit
+@mixin prefix($property, $value, $prefixes) {
+  @each $prefix in $prefixes {
+    -#{$prefix}-#{$property}: $value;
+  }
+  #{$property}: $value;
+}
+
+// many CSS properties start with the same prefix can use nesting: font-, transiton-, animation-, margin-, 
+
+
+// @if $dark-theme {
+//   $primary-color: darken($primary-color, 60%);
+//   $accent-color: lighten($accent-color, 60%);
+// }
+
+.font-smaller { font-size: 15rpx;}
+.font-small { font-size: 20rpx;}
+.font-sm { font-size: 25rpx;}
+.font { font-size: 30rpx!important;}
+.font-md { font-size: 35rpx!important;}
+.font-lg { font-size: 40rpx;}

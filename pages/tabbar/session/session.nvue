@@ -1,0 +1,144 @@
+<template>
+	<view>
+		<p-nav></p-nav>
+
+		<p-swipe-cell></p-swipe-cell>
+		
+		<u-swipe-action>
+		<u-list
+			:height="uListH"
+			:bounce="bounce"
+			:scrollIntoView="scrollIntoView"
+			enableFlex
+			enableBackToTop
+			showScrollbar
+			@scrolltolower="scrolltolower">
+			
+			<refresh
+				style="text-align: center;"
+				@refresh="onrefresh" 
+				@pullingdown="onpullingdown" 
+				:display="refreshing ? 'show' : 'hide'">
+				<view style="height: 48px; width: 750rpx; display: flex; justify-content: center; align-items: center;">
+					<u-loading-icon  size="24px" textSize="14px" :text="refreshHint" :mode="refreshing ? 'circle' : 'semicircle'" ></u-loading-icon>
+				</view>
+			</refresh>
+			
+			<u-list-item>
+				<view
+					style="padding: 20rpx; background-color: #FFFFFF;">
+					<u-search 					
+						disabled 
+						searchIcon='' 
+						:showAction="false" 
+						shape="square" 
+						inputAlign="center" 
+						height="70" 
+						placeholder="搜一搜"
+						@click="noop"></u-search>
+				</view>
+			</u-list-item>
+			
+			<template v-for="(item, index) in indexList">
+				<u-list-item
+					:anchor="index"
+					:key="index">
+					<u-swipe-action-item
+						@click="onOptionClick"
+						:options="options">
+						<p-cell :dataSource="item"></p-cell>
+					</u-swipe-action-item>
+				</u-list-item>
+			</template>
+			
+		</u-list>
+		</u-swipe-action>
+	</view>
+</template> 
+
+<script>
+	export default {
+		data() {
+			return {
+				bounce: true,
+				scrollIntoView: undefined,
+				refreshing: false,
+				refreshHint: '',
+				options: [{
+					text: '收藏',
+					style: {
+						backgroundColor: '#3c9cff'
+					}
+				}, {
+					text: '删除',
+					style: {
+						backgroundColor: '#f56c6c'
+					}
+				}],
+				indexList: [],
+				urls: [
+					'https://cdn.uviewui.com/uview/album/1.jpg',
+					'https://cdn.uviewui.com/uview/album/2.jpg',
+					'https://cdn.uviewui.com/uview/album/3.jpg',
+					'https://cdn.uviewui.com/uview/album/4.jpg',
+					'https://cdn.uviewui.com/uview/album/5.jpg',
+					'https://cdn.uviewui.com/uview/album/6.jpg',
+					'https://cdn.uviewui.com/uview/album/7.jpg',
+					'https://cdn.uviewui.com/uview/album/8.jpg',
+					'https://cdn.uviewui.com/uview/album/9.jpg',
+					'https://cdn.uviewui.com/uview/album/10.jpg',
+				]
+			}
+		},
+		computed: {
+			uListH() {
+				return `${uni.getSystemInfoSync().safeArea.height - 44}px`
+			}
+		},
+		onLoad() {
+			this.loadmore()
+		},
+		methods: {
+			onOptionClick(e) {
+				console.log(e)
+			},
+			onrefresh(e) {				
+				this.bounce = false
+				this.refreshing = true
+				this.refreshHint = '极速加载中...'
+				
+				setTimeout(() => {
+					this.bounce = true
+					this.refreshing = false
+				}, 5000)
+			},
+			onpullingdown(e) {
+				if(this.refreshing){
+					return;
+				}
+				this.refreshHint = Math.abs(e.pullingDistance) > Math.abs(e.viewHeight) ? "释放立即刷新" : "下拉可以刷新"
+			},
+			scrolltolower() {
+				this.loadmore()
+			},
+			loadmore() {
+				for (let i = 0; i < 30; i++) {
+					const index = uni.$u.random(0, this.urls.length - 1)
+					const data = {
+						avatar: this.urls[index],
+						nick: `好友-${this.indexList.length}`,
+						timestamp: Date.now(),
+						emphasize: index % 3 === 0 ? '@全体成员' : index % 2 === 0 ? '@我' : '',
+						text: `${uni.$u.guid(5, false).toUpperCase()}: ${uni.$u.guid(uni.$u.random(0, 100), false)}`,
+						badge: uni.$u.random(0, 10)
+					}
+					this.indexList.push(data)
+				}
+			}
+		},
+	}
+</script>
+
+<style lang="scss">
+	
+</style>

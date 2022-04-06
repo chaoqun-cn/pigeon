@@ -1,0 +1,200 @@
+<template>
+	<view class="content">
+		<swiper
+			@touchstart="onTouchStart"
+			@touchend="onTouchEnd"
+			@change="onChange"
+			class="video-swiper" 
+			:current="current"
+			circular
+			vertical>
+			<swiper-item 
+				v-for="(item, index) in swiperList" :key="index"
+				class="video-swiper-item">
+				<vbox ref="vbox" :video="item"
+					@finish="onFinish"></vbox>
+			</swiper-item>
+		</swiper>
+	</view>
+</template>
+
+<script>
+	import vbox from './vbox/vbox'
+	
+	const THREE = 3
+	
+	export default {
+		components: {
+			vbox
+		},
+		data() {
+			return {
+				playingIndex: 0, 
+				playOffset: 0,
+				current: 1,
+				
+				startY: 0,
+				endY: 0,
+				videoList: [
+					{
+						id: 1,
+						src: 'http://vfx.mtime.cn/Video/2019/03/17/mp4/190317150237409904.mp4'
+						
+					},
+					{
+						id: 2,
+						src: 'http://vfx.mtime.cn/Video/2019/03/18/mp4/190318214226685784.mp4'
+					},
+					{
+						id: 3,
+						src: 'http://vfx.mtime.cn/Video/2019/03/18/mp4/190318231014076505.mp4'
+					},
+					{
+						id: 4,
+						src: 'http://vfx.mtime.cn/Video/2019/03/19/mp4/190319212559089721.mp4'
+					},
+					{
+						id: 5,
+						src: 'http://vfx.mtime.cn/Video/2019/03/19/mp4/190319222227698228.mp4'
+					},
+					{
+						id: 6,
+						src: 'http://vfx.mtime.cn/Video/2019/03/21/mp4/190321153853126488.mp4'
+					},
+					{
+						id: 7,
+						src: 'http://vfx.mtime.cn/Video/2019/02/04/mp4/190204084208765161.mp4'
+					},
+					{
+						id: 8,
+						src: 'http://vfx.mtime.cn/Video/2019/03/12/mp4/190312083533415853.mp4'
+					}
+				],
+			
+				swiperList: [],
+			}
+		},
+		watch: {
+			videoList: {
+				handler: function(list) {
+					const len = list.length
+					if (len >= THREE) {
+						if(this.playingIndex === 0) {
+							this.swiperList.push(list[len - 1], list[0], list[1])
+						} else if (this.playingIndex === list.length - 1) {
+							this.swiperList.push(list[len - 2], list[len - 1], list[0])						
+						} else {
+							this.swiperList.push(...list.slice(this.playingIndex - 1, this.playingIndex + THREE))
+						}
+					}else{
+						this.swiperList.push(...list)
+					}
+				},
+				immediate: true
+			}
+		},
+		mounted() {
+			console.log('mounted')
+			this.$nextTick(() =>{				
+				this.$refs.vbox[this.current].playback()
+			})
+		},
+		onShow() {
+			console.log('onShow')
+			if(this.$refs.vbox) {
+				this.$refs.vbox[this.current].play()
+			}
+			plus.navigator.setStatusBarStyle('light')
+			uni.setTabBarStyle({
+				color: '#FFFFFF',
+				selectedColor: '#3c9cff',
+				backgroundColor: '#000000',				
+				borderStyle: 'black'
+			})
+		},
+		
+		onHide() {
+			console.log('onHide')
+			this.$refs.vbox[this.current].pause()
+			uni.setTabBarStyle({
+				color: '#2c2c2c',
+				selectedColor: '#3c9cff',
+				backgroundColor: '#fbfbfb',				
+				borderStyle: 'white'
+			})
+		},
+		methods: {
+			onChange(e) {
+				const { source , current } = e.detail
+				console.log('onChange', source, this.playingIndex, current) 
+				if(this.playingIndex == this.videoList.length) {
+					this.playingIndex = 0
+				}
+				if(this.playingIndex == -1) {
+					this.playingIndex = this.videoList.length -1
+				}
+				this.$nextTick(() => {
+					this.current = current
+					if(source === 'touch') {
+						// touch 用户划动引起swiper变化
+						if(this.endY < this.startY) {							
+							// swipeup
+							this.playingIndex++
+							this.swiperList.splice(
+								(current + 1) % THREE,
+								1,
+								this.videoList[(this.playingIndex + 1) % this.videoList.length]
+							)
+						}else {	
+							// swipedown
+							this.playingIndex--
+							this.swiperList.splice(
+								(current - 1 + THREE) % THREE,
+								1,
+								this.videoList[(this.playingIndex - 1 + this.videoList.length) % this.videoList.length]
+							)
+						}
+					}else {
+						// 直接改变current属性导致的change事件
+						// pass(见onFinish方法)
+					}					
+					// this.playOrPause()
+					this.startY = 0
+					this.endY = 0
+				})
+			},
+			// playOrPause() {
+			// 	const videoinPlaying = this.swiperList[this.playingIndex]
+			// 	this.$refs.vbox.forEach(vbox => {
+			// 		vbox.video.id === videoinPlaying.id ? vbox.play() : vbox.pause()
+			// 	})
+			// },
+			onTouchStart(e) {
+				this.startY = e.changedTouches[0].screenY
+			},
+			onTouchEnd(e) {
+				this.endY = e.changedTouches[0].screenY
+			},
+			
+			onFinish() {
+				// console.log('onFinish')
+				// this.playingIndex++
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.content {
+		width: 750rpx;
+		flex: 1;
+
+		.video-swiper {
+			flex: 1;
+			&-item {			
+				flex: 1;
+			}
+		}
+	}
+
+</style>

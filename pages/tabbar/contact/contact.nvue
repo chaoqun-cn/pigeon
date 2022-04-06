@@ -1,0 +1,396 @@
+<template>
+    <list :id="pageId" class="page" :showScrollbar="false" :bounce="false" fixFreezing="true">
+        <cell>
+            <view id="header-wrapper" class="header">
+				<slot name="header">
+					<text class="header-title">header</text>
+				</slot>
+            </view>
+        </cell>
+        <cell>
+            <view class="tabs" :style="{height: (pageHeight ||  sys.windowHeight) + 'px'}">
+                <scroll-view ref="tabbar" id="tab-bar" class="tab-bar" :scroll-x="true" :show-scrollbar="false" :scroll-into-view="scrollInto">
+                    <view style="flex-direction: column;">
+                        <view style="flex-direction: row;">
+                            <view class="uni-tab-item" v-for="(tab, index) in tabList" :key="tab.id" 
+								:id="tab.id" :ref="`tab_ref-${index}`" :data-index="index"
+								@tap="onTabItemTap">
+                                <text class="uni-tab-item-title" :class="activeTabIndex == index ? 'uni-tab-item-title-active' : ''">{{tab.name}}</text>
+                            </view>
+                        </view>
+                        <view class="scroll-view-indicator">
+                            <view ref="underline" class="scroll-view-underline" 
+                                :style="{left: indicatorLineLeft + 'px', width: indicatorLineWidth + 'px'}"></view>
+                        </view>
+                    </view>
+                </scroll-view>
+                <!-- <view class="tab-bar-line"></view> -->
+                <swiper class="tab-view" ref="swiper" id="tab-bar-view" :current="activeTabIndex" :duration="300" @change="onSwiperChange"
+                    @transition="onSwiperTransition" @animationfinish="onSwiperAnimationfinish" @onAnimationEnd="onSwiperAnimationfinish">
+                    <swiper-item class="swiper-item" v-for="(page, index) in tabList" :key="index">
+						<component :is="page.subPgComp" ref="subPage"></component>
+                    </swiper-item>
+                </swiper>
+            </view>
+        </cell>
+    </list>
+</template>
+
+<script>
+    // #ifdef APP-PLUS
+    const dom = weex.requireModule('dom');
+    // #endif
+
+    // 缓存每页最多
+    const MAX_CACHE_DATA = 100;
+
+    // 缓存页签数量
+    const MAX_CACHE_PAGE = 3;
+    const TAB_PRELOAD_OFFSET = 1;
+
+	import subPgFd from './subpages/subpg-fd'
+	import subPgGp from './subpages/subpg-gp'
+    import subPgGc from './subpages/subpg-gc'
+	
+	// 查询节点信息(nvue 暂不支持 class 查询)
+	// 目前此方法在支付宝小程序中无法获取组件跟接点的尺寸，为支付宝的bug(2020-07-21) 解决办法为在组件根部再套一个没有任何作用的view元素
+	function queryRect(selector, all) {
+	    return new Promise((resolve) => {
+	        uni.createSelectorQuery()
+	            .in(this)[all ? 'selectAll' : 'select'](selector)
+	            .boundingClientRect((rect) => {
+	                if (all && Array.isArray(rect) && rect.length) {
+	                    resolve(rect)
+	                }
+	                if (!all && rect) {
+	                    resolve(rect)
+	                }
+	            })
+	            .exec()
+	    })
+		
+		// #ifdef APP-NVUE
+		// const ref = this.$refs[el]
+		// dom.getComponentRect(ref, res => {
+		// 	resolve(res.size)
+		// })
+		// #endif
+	}
+
+    export default {
+		name: 'p-swiper-list',
+        components: {
+            subPgFd,
+			subPgGp,
+			subPgGc
+        },
+		props: {
+			pageHeight: {
+				type: Number,
+				default: 0
+			},
+		},
+		mixins: [{methods: {queryRect}}],
+        data() {
+            return {
+                tabList: [],
+				subPageRefs: [],
+                activeTabIndex: -1,
+				lastActiveTabIndex: -1,
+                caches: [],
+                scrollInto: "",
+				
+				layout: {},
+				tabSizes: {},
+				
+                indicatorLineLeft: 0,
+                indicatorLineWidth: 0,
+				
+				tapSwitching: false,
+                pageId: this.$options.name,				
+				sys: uni.getSystemInfoSync()
+            }
+        },
+        onLoad() {
+			console.log('onLoad')
+			const subPageComps = ['fd', 'gp', 'gc']
+			Array.of('好友', '分组', '群聊')
+			.forEach((tabName, index) => {
+				this.tabList.push({
+				    id: `tab-${index}`,
+				    name: tabName,
+				    subPgComp: `sub-pg-${subPageComps[index]}`
+				})
+			})
+        },		
+		onShow() {
+			console.log('onShow') 
+		},
+        onReady() {
+			console.log('onReady') 
+        },
+		beforeMount() {
+			console.log('beforeMount') 
+		},
+		mounted() {
+			console.log('mounted')
+			this.layoutQuery()
+		},
+		beforeCreate() {
+			console.log('beforeCreate', uni.getSystemInfoSync())
+		},
+		created() {
+		    console.log('created')
+		},
+        methods: {
+            onTabItemTap(e) {
+                const index = e.target.dataset.index || e.currentTarget.dataset.index;
+				console.log('onTabItemTap', index)
+
+                // #ifdef APP-PLUS || H5 || MP-WEIXIN || MP-QQ
+                this.tapSwitching = true
+                // #endif
+
+                this.switchTab(index);
+            },
+            onSwiperChange(e) {
+                // 注意：百度小程序会触发2次
+				// console.log('onSwiperChange', e)
+                // #ifndef APP-PLUS || H5 || MP-WEIXIN || MP-QQ
+                // this.onSwiperAnimationfinish(e)
+                // #endif
+            },
+            onSwiperTransition(e) {
+				// console.log('onSwiperTransition', e)
+                if (this.tapSwitching) {
+                    return
+                }
+				
+				const offsetX = e.detail.dx,
+					indicatorLineRect = this.tabSizes[this.lastActiveTabIndex]
+				
+				// this.tabSizes may not ready
+				if (!indicatorLineRect) return
+
+                const fractor = Math.abs(offsetX / this.layout.swiperWidth)
+                const targetRect = offsetX > 0 ? 
+					(this.tabSizes[this.lastActiveTabIndex + 1]  || this.tabSizes[this.tabSizes - 1]) : 
+					(this.tabSizes[this.lastActiveTabIndex - 1]  || this.tabSizes[0])
+				
+                var lineL = indicatorLineRect.left + (targetRect.left - indicatorLineRect.left) * fractor
+                var lineW = indicatorLineRect.width + (targetRect.width - indicatorLineRect.width) * fractor
+                this.updateIndicator(lineL, lineW);
+     
+            },
+            onSwiperAnimationfinish(e) {
+                // #ifdef APP-PLUS || H5 || MP-WEIXIN || MP-QQ
+                const index = this.lastActiveTabIndex = e.target.current || e.detail.current
+                if (this.activeTabIndex === index) {
+					return this.tapSwitching = false
+                }
+                this.switchTab(index)
+                // #endif
+            },
+           
+			updateIndicator(left, width) {
+                this.indicatorLineLeft = left;
+                this.indicatorLineWidth = width;
+            },
+			switchTab(index) {
+				const subPage = this.subPageRefs[index]
+				
+				this.activeTabIndex !== index ? 
+					(() => {
+						this.caches.includes(index) ?  subPage?.refresh() : subPage?.fetchData() && this.tidyCaches(index)
+						this.activeTabIndex = index
+						this.scrolltoActiveTab(index)
+					})()
+					: subPage?.goTop()
+				
+			},
+            scrolltoActiveTab(index) {
+				// #ifdef APP-NVUE
+                const el = this.$refs[`tab_ref-${index}`][0],
+					halfTabbarWidth = this.layout.tabbarWidth / 2, 
+					activeTabRect = this.tabSizes[index]
+				 
+                let offset = 0;
+                // TODO fix ios offset
+                if (index > 0) {
+                    offset = halfTabbarWidth  - activeTabRect.width / 2;
+                    if (activeTabRect.right < halfTabbarWidth) {
+                        offset = this.tabSizes[0].width;
+                    }
+                }
+                dom.scrollToElement(el, {
+                    offset: -offset
+                });
+				// #endif
+				// #ifndef APP-NVUE
+				this.scrollInto = this.tabList[index].id;
+				// #endif
+				
+				this.updateIndicator(activeTabRect.left,activeTabRect.width)
+            },
+			tidyCaches(activeTabIndex) {
+				this.caches.push(activeTabIndex) 
+				this.subPageRefs[activeTabIndex].setSpecialEffects({
+					id: this.pageId,
+					headerHeight: this.layout.headerHeight
+				})
+				this.caches.length > MAX_CACHE_PAGE && this.subPageRefs[(this.caches.shift())]?.release()
+			},
+			layoutQuery() {
+				const selectors = ['#header-wrapper', '#tab-bar', '#tab-bar-view', this.tabList.map(tab => `#${tab.id}`)].flat()
+			
+				Promise.all(selectors.map(selector => this.queryRect(selector))).then(
+					rects => {
+						Object.assign(this.layout, {
+							headerHeight: rects[0].height,
+							tabbarWidth: rects[1].width,
+							swiperWidth: rects[2].width,
+						})						
+						rects.slice(3).forEach(rect => this.tabSizes[rect.dataset.index] = rect)
+					}
+				).then(() => {
+					this.switchTab(this.activeTabIndex !== -1 ? this.activeTabIndex : 1)
+					this.subPageRefs = this.$refs.subPage
+				})
+			},
+        }
+    }
+</script>
+
+<style>
+    /* #ifndef APP-PLUS */
+    page {
+        width: 100%;
+        min-height: 100%;
+        display: flex;
+    }
+
+    /* #endif */
+
+    .page {
+        flex: 1;
+    }
+
+    .header {
+        height: 160px;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        background-color: #f4f4f4;
+    }
+
+    .header-title {
+        font-size: 30px;
+        font-weight: bold;
+        color: #444;
+    }
+
+    .flexible-view {
+        background-color: #f823ff;
+    }
+
+    .page-head {
+        height: 200px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: red;
+    }
+
+    .tabs {
+        flex-direction: column;
+        overflow: hidden;
+        background-color: #ffffff;
+        /* #ifdef MP-ALIPAY || MP-BAIDU */
+        height: 100vh;
+        /* #endif */
+    }
+
+    .tab-bar {
+        width: 750rpx;
+        height: 84rpx;
+        flex-direction: row;
+        /* #ifndef APP-PLUS */
+        white-space: nowrap;
+        /* #endif */
+    }
+
+    /* #ifndef APP-NVUE */
+    .tab-bar ::-webkit-scrollbar {
+        display: none;
+        width: 0 !important;
+        height: 0 !important;
+        -webkit-appearance: none;
+        background: transparent;
+    }
+
+    /* #endif */
+
+    .scroll-view-indicator {
+        position: relative;
+        height: 2px;
+        background-color: transparent;
+    }
+
+    .scroll-view-underline {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 0;
+        background-color: #007AFF;
+		transition-duration: 0.2s;
+		transition-property: left;
+    }
+
+    .tab-bar-line {
+        height: 1rpx;
+        background-color: #cccccc;
+    }
+
+    .tab-view {
+        flex: 1;
+    }
+
+    .uni-tab-item {
+        /* #ifndef APP-PLUS */
+        display: inline-block;
+        /* #endif */
+        flex-wrap: nowrap;
+        padding-left: 25rpx;
+        padding-right: 25rpx;
+    }
+
+    .uni-tab-item-title {
+        color: #555;
+        font-size: 30rpx;
+        height: 80rpx;
+        line-height: 80rpx;
+        flex-wrap: nowrap;
+        /* #ifndef APP-PLUS */
+        white-space: nowrap;
+        /* #endif */
+    }
+
+    .uni-tab-item-title-active {
+        color: #007AFF;
+    }
+
+    .swiper-item {
+        flex: 1;
+        flex-direction: column;
+    }
+
+    .swiper-page {
+        flex: 1;
+        flex-direction: row;
+        position: absolute;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+    }
+</style>
